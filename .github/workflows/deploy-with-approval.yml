@@ -19,110 +19,15 @@ jobs:
         run: echo "Building application..."
 
   request-deploy:
-    runs-on: ubuntu-latest
-    outputs:
-      item-id: ${{ steps.create-item.outputs.item-id }}
-    steps:
-      - name: Create deployment request in project
-        id: create-item
-        run: |
-          # Configuration
-          PROJECT_NUMBER=1
-          OWNER="rmiguelito"
-          PROJECT_ID="PVT_kwHOAPMWaM4BRDsm"
-          
-          # Field IDs
-          SERVICE_FIELD_ID="PVTF_lAHOAPMWaM4BRDsmzg-_5KU"
-          STATUS_FIELD_ID="PVTSSF_lAHOAPMWaM4BRDsmzg-_3fU"
-          DEPLOYMENT_APPROVAL_LINK_FIELD_ID="PVTF_lAHOAPMWaM4BRDsmzg_AfXo"
-          VERSION_FIELD_ID="PVTF_lAHOAPMWaM4BRDsmzg-_5Yw"
-          
-          # Status options function
-          get_status_option_id() {
-            case "$1" in
-              "waiting-approval") echo "f75ad846" ;;
-              "deploying") echo "47fc9ee4" ;;
-              "approved") echo "98236657" ;;
-              "completed") echo "f83c69f3" ;;
-              "failed") echo "b49efd60" ;;
-              *) echo ""; return 1 ;;
-            esac
-          }
-          
-          # Create project item for deployment approval
-          ITEM_TITLE="Deploy ${{ github.event.repository.name }} - Build #${{ github.run_number }}"
-          SERVICE="${{ github.event.repository.name }}"
-          STATUS="waiting-approval"
-          DEPLOYMENT_APPROVAL_LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          VERSION="${{ github.ref_name }}"
-          
-          # Validate status
-          STATUS_ID=$(get_status_option_id "$STATUS") || {
-            echo "Error: Invalid status. Valid options: waiting-approval, deploying, approved, completed, failed"
-            exit 1
-          }
-          
-          echo "Creating project item..."
-          echo "  Title: $ITEM_TITLE"
-          echo "  Service: $SERVICE"
-          echo "  Status: $STATUS"
-          echo "  Deployment Approval Link: $DEPLOYMENT_APPROVAL_LINK"
-          echo "  Version: $VERSION"
-          echo ""
-          
-          # Create draft item
-          ITEM_JSON=$(gh project item-create $PROJECT_NUMBER \
-            --owner "$OWNER" \
-            --title "$ITEM_TITLE" \
-            --format json)
-          ITEM_ID=$(echo "$ITEM_JSON" | jq -r '.id')
-          echo "✓ Item created: $ITEM_ID"
-          
-          # Set Service field
-          echo "Setting Service..."
-          gh project item-edit \
-            --id "$ITEM_ID" \
-            --field-id "$SERVICE_FIELD_ID" \
-            --project-id "$PROJECT_ID" \
-            --text "$SERVICE"
-          echo "✓ Service set: $SERVICE"
-          
-          # Set Status field
-          echo "Setting Status..."
-          gh project item-edit \
-            --id "$ITEM_ID" \
-            --field-id "$STATUS_FIELD_ID" \
-            --project-id "$PROJECT_ID" \
-            --single-select-option-id "$STATUS_ID"
-          echo "✓ Status set: $STATUS"
-          
-          # Set Deployment Approval Link field
-          echo "Setting Deployment Approval Link..."
-          gh project item-edit \
-            --id "$ITEM_ID" \
-            --field-id "$DEPLOYMENT_APPROVAL_LINK_FIELD_ID" \
-            --project-id "$PROJECT_ID" \
-            --text "$DEPLOYMENT_APPROVAL_LINK"
-          echo "✓ Deployment Approval Link set"
-          
-          # Set Version field
-          echo "Setting Version..."
-          gh project item-edit \
-            --id "$ITEM_ID" \
-            --field-id "$VERSION_FIELD_ID" \
-            --project-id "$PROJECT_ID" \
-            --text "$VERSION"
-          echo "✓ Version set: $VERSION"
-          
-          echo ""
-          echo "✓ All fields set successfully!"
-          echo "item-id=$ITEM_ID"
-          echo "Item created: $ITEM_ID"
-          
-          # Output for GitHub Actions
-          echo "item-id=$ITEM_ID" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+    uses: rmiguelito/add-fields-to-project@main
+    with:
+      project_number: '1'
+      project_id: 'PVT_kwHOAPMWaM4BRDsm'
+      repo_name: '${{ github.event.repository.name }}'
+      run_id: '${{ github.run_id }}'
+      ref_name: '${{ github.ref_name }}'
+    secrets:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
   deploy:
     needs: [build, request-deploy]
     runs-on: ubuntu-latest
@@ -131,108 +36,45 @@ jobs:
       url: https://example.com
     steps:
       - name: Update deployment status to deploying
-        run: |
-          # Configuration
-          PROJECT_ID="PVT_kwHOAPMWaM4BRDsm"
-          STATUS_FIELD_ID="PVTSSF_lAHOAPMWaM4BRDsmzg-_3fU"
-          
-          # Status options function
-          get_status_option_id() {
-            case "$1" in
-              "waiting-approval") echo "f75ad846" ;;
-              "deploying") echo "47fc9ee4" ;;
-              "approved") echo "98236657" ;;
-              "completed") echo "f83c69f3" ;;
-              "failed") echo "b49efd60" ;;
-              *) echo ""; return 1 ;;
-            esac
-          }
-          
-          ITEM_ID="${{ needs.request-deploy.outputs.item-id }}"
-          if [ -n "$ITEM_ID" ]; then
-            STATUS="deploying"
-            STATUS_ID=$(get_status_option_id "$STATUS")
-            
-            echo "Updating deployment status to: $STATUS"
-            gh project item-edit \
-              --id "$ITEM_ID" \
-              --field-id "$STATUS_FIELD_ID" \
-              --project-id "$PROJECT_ID" \
-              --single-select-option-id "$STATUS_ID"
-            echo "✓ Status updated: $STATUS"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        uses: ./.github/workflows/add-fields-to-project.yml
+        with:
+          project_number: '1'
+          project_id: 'PVT_kwHOAPMWaM4BRDsm'
+          repo_name: '${{ github.event.repository.name }}'
+          run_id: '${{ github.run_id }}'
+          ref_name: '${{ github.ref_name }}'
+          status: 'deploying'
+          item_id: '${{ needs.request-deploy.outputs.item-id }}'
+        secrets:
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
 
       - name: Deploy to production
         run: echo "Deploying to production..."
 
       - name: Update deployment status to completed
         if: success()
-        run: |
-          # Configuration
-          PROJECT_ID="PVT_kwHOAPMWaM4BRDsm"
-          STATUS_FIELD_ID="PVTSSF_lAHOAPMWaM4BRDsmzg-_3fU"
-          
-          # Status options function
-          get_status_option_id() {
-            case "$1" in
-              "waiting-approval") echo "f75ad846" ;;
-              "deploying") echo "47fc9ee4" ;;
-              "approved") echo "98236657" ;;
-              "completed") echo "f83c69f3" ;;
-              "failed") echo "b49efd60" ;;
-              *) echo ""; return 1 ;;
-            esac
-          }
-          
-          ITEM_ID="${{ needs.request-deploy.outputs.item-id }}"
-          if [ -n "$ITEM_ID" ]; then
-            STATUS="completed"
-            STATUS_ID=$(get_status_option_id "$STATUS")
-            
-            echo "Updating deployment status to: $STATUS"
-            gh project item-edit \
-              --id "$ITEM_ID" \
-              --field-id "$STATUS_FIELD_ID" \
-              --project-id "$PROJECT_ID" \
-              --single-select-option-id "$STATUS_ID"
-            echo "✓ Status updated: $STATUS"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        uses: rmiguelito/add-fields-to-project@main
+        with:
+          project_number: '1'
+          project_id: 'PVT_kwHOAPMWaM4BRDsm'
+          repo_name: '${{ github.event.repository.name }}'
+          run_id: '${{ github.run_id }}'
+          ref_name: '${{ github.ref_name }}'
+          status: 'completed'
+          item_id: '${{ needs.request-deploy.outputs.item-id }}'
+        secrets:
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
 
       - name: Update deployment status to failed
         if: failure()
-        run: |
-          # Configuration
-          PROJECT_ID="PVT_kwHOAPMWaM4BRDsm"
-          STATUS_FIELD_ID="PVTSSF_lAHOAPMWaM4BRDsmzg-_3fU"
-          
-          # Status options function
-          get_status_option_id() {
-            case "$1" in
-              "waiting-approval") echo "f75ad846" ;;
-              "deploying") echo "47fc9ee4" ;;
-              "approved") echo "98236657" ;;
-              "completed") echo "f83c69f3" ;;
-              "failed") echo "b49efd60" ;;
-              *) echo ""; return 1 ;;
-            esac
-          }
-          
-          ITEM_ID="${{ needs.request-deploy.outputs.item-id }}"
-          if [ -n "$ITEM_ID" ]; then
-            STATUS="failed"
-            STATUS_ID=$(get_status_option_id "$STATUS")
-            
-            echo "Updating deployment status to: $STATUS"
-            gh project item-edit \
-              --id "$ITEM_ID" \
-              --field-id "$STATUS_FIELD_ID" \
-              --project-id "$PROJECT_ID" \
-              --single-select-option-id "$STATUS_ID"
-            echo "✓ Status updated: $STATUS"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        uses: rmiguelito/add-fields-to-project@main
+        with:
+          project_number: '1'
+          project_id: 'PVT_kwHOAPMWaM4BRDsm'
+          repo_name: '${{ github.event.repository.name }}'
+          run_id: '${{ github.run_id }}'
+          ref_name: '${{ github.ref_name }}'
+          status: 'failed'
+          item_id: '${{ needs.request-deploy.outputs.item-id }}'
+        secrets:
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
